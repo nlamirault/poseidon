@@ -78,7 +78,7 @@ func ExtractHarbors() (map[string]string, error) {
 					// glog.V(3).Infof("Attributes: %s", t.Attr)
 					if t.Attr[2].Val == "Port PP" || t.Attr[2].Val == "Port PS" {
 						glog.V(3).Infof("Attributes: %s", t.Attr)
-						id := t.Attr[0].Val
+						id := strings.TrimPrefix(t.Attr[0].Val, "/")
 						glog.V(3).Infof("Harbor ID: %s", id)
 
 						inner := z.Next()
@@ -93,6 +93,58 @@ func ExtractHarbors() (map[string]string, error) {
 			}
 		}
 	}
+	glog.V(2).Infof("Harbors: %s", results)
+	return results, nil
+}
+
+func DescribeHarbor(id string) (map[string]string, error) {
+	results := map[string]string{}
+	glog.V(2).Infof("Describe harbor: %s", id)
+
+	body, err := fetch(fmt.Sprintf("%s/%s", website, id), url.Values{})
+	if err != nil {
+		return nil, err
+	}
+
+	z := html.NewTokenizer(strings.NewReader(string(body)))
+	for {
+		tokenType := z.Next()
+		if tokenType == html.ErrorToken {
+			break
+		}
+		// token := z.Token()
+		switch tokenType {
+		case html.SelfClosingTagToken: // <tag>
+			t := z.Token()
+			if t.Data == "meta" {
+				glog.V(3).Infof("Meta: %s", t)
+				if len(t.Attr) == 2 {
+					glog.V(3).Infof("Attributes: %s", t.Attr[0].Val)
+					if t.Attr[0].Val == "latitude" || t.Attr[0].Val == "longitude" {
+						results[t.Attr[0].Val] = t.Attr[1].Val
+
+					}
+				}
+			}
+		case html.StartTagToken: // <tag>
+			t := z.Token()
+			if t.Data == "h2" {
+				if len(t.Attr) == 3 {
+					if t.Attr[0].Val == fmt.Sprintf("Port%s", id) {
+						glog.V(3).Infof("Harbor name: %s", t)
+						inner := z.Next()
+						if inner == html.TextToken {
+							text := (string)(z.Text())
+							value := strings.TrimSpace(text)
+							glog.V(3).Infof("Harbor Name: %s", value)
+							results["name"] = value
+						}
+					}
+				}
+			}
+		}
+	}
+
 	glog.V(2).Infof("Harbors: %s", results)
 	return results, nil
 }

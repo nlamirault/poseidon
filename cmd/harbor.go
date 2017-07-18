@@ -62,7 +62,7 @@ func newHarborCmd(out io.Writer) *cobra.Command {
 			if len(name) == 0 {
 				return errors.New("missing harbor name")
 			}
-			if err := harborCmd.getHarbor(name); err != nil {
+			if err := harborCmd.getHarbor(name, out); err != nil {
 				return err
 			}
 			return nil
@@ -96,8 +96,23 @@ func (cmd harborCmd) listHarbors(out io.Writer) error {
 	return nil
 }
 
-func (cmd harborCmd) getHarbor(name string) error {
+func (cmd harborCmd) getHarbor(name string, out io.Writer) error {
 	glog.V(1).Infof("Retrieve harbor: %s", name)
+	harbor, err := tides.DescribeHarbor(name)
+	if err != nil {
+		return err
+	}
 
+	table := tablewriter.NewWriter(out)
+	table.SetHeader([]string{"Information", "Value"})
+	table.SetRowLine(true)
+	table.SetAutoWrapText(false)
+	for id, name := range harbor {
+		table.Append([]string{
+			id,
+			name,
+		})
+	}
+	table.Render()
 	return nil
 }
