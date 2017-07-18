@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"fmt"
 	"golang.org/x/net/html"
+	htmlutils "html"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -52,6 +53,29 @@ func fetch(uri string, data url.Values) ([]byte, error) {
 		return nil, fmt.Errorf("Reading the body: %s", err.Error())
 	}
 	return body, nil
+}
+
+func even(number int) bool {
+	return number%2 == 0
+}
+
+func getFormatedTides(tides [][]string) string {
+	var buffer bytes.Buffer
+	for _, day := range tides {
+		glog.V(4).Infof("Day: %s", day)
+		for i := 2; i < len(day); i++ {
+			if len(day[i]) > 0 {
+				if even(i) {
+					buffer.WriteString(fmt.Sprintf("PM: %s ", day[i]))
+				} else {
+					buffer.WriteString(fmt.Sprintf("BM: %s ", day[i]))
+				}
+			}
+
+		}
+		buffer.WriteString("\n")
+	}
+	return strings.TrimSpace(buffer.String())
 }
 
 func ExtractHarbors() (map[string]string, error) {
@@ -106,8 +130,15 @@ func DescribeHarbor(id string) (map[string]string, error) {
 		return nil, err
 	}
 
+	inTides := false
+	tides := []string{"", "", "", "", "", "", "", "", "", "", "", "", "", ""}
+	weekTides := [][]string{}
+	notFinished := true
+	i := 0
+
 	z := html.NewTokenizer(strings.NewReader(string(body)))
 	for {
+
 		tokenType := z.Next()
 		if tokenType == html.ErrorToken {
 			break
@@ -142,9 +173,44 @@ func DescribeHarbor(id string) (map[string]string, error) {
 					}
 				}
 			}
+		case html.EndTagToken: // </tag>
+			t := z.Token()
+			if t.Data == "td" {
+
+			} else if t.Data == "tr" {
+				if i > 0 {
+					glog.V(3).Infof(">> Values: %s ||||| %s", weekTides, tides)
+					weekTides = append(weekTides, tides)
+					if inTides {
+						tides = []string{"", "", "", "", "", "", "", "", "", "", "", "", "", ""}
+						i = 0
+					}
+				}
+			}
+		case html.TextToken:
+			t := z.Token()
+			if notFinished {
+				text := strings.TrimSpace(htmlutils.UnescapeString(t.Data))
+				glog.V(3).Infof(">>>>>>>>>>>>>>> Text: [%s]", text)
+				if inTides && notFinished {
+					glog.V(3).Infof("Ajout de : %s %d", t.Data, i)
+					// tides = append(tides, t.Data)
+					tides[i] = text
+					i++
+				}
+				if t.Data == "Coeff." {
+					glog.V(3).Infof("Start tides -------------------")
+					inTides = true
+				} else if t.Data == "@maree_info_136" {
+					notFinished = false
+					tides = []string{"", "", "", "", "", "", "", "", "", "", "", "", "", ""}
+					i = 0
+				}
+			}
 		}
 	}
-
+	results["tides"] = getFormatedTides(weekTides)
+	glog.V(2).Infof("Week Tides: %s", weekTides)
 	glog.V(2).Infof("Harbors: %s", results)
 	return results, nil
 }
